@@ -207,7 +207,6 @@ pub extern "C" fn call() {
         ENTRY_POINT_STAKE,
         vec![
             Parameter::new(AMOUNT, CLType::U256),
-            // Parameter::new(STAKED_TOKEN, CLType::Key),
         ],
         URef,
         EntryPointAccess::Public,
