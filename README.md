@@ -1,4 +1,4 @@
-# Casper Stake Contract
+# Casper Stake Contract (W.I.P)
 
 ## Preparation
 
