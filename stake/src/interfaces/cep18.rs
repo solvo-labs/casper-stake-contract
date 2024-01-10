@@ -29,10 +29,10 @@ impl CEP18 {
             self.contract_hash,
             "transfer_from",
             runtime_args! {
-              "owner" => sender,
-              "recipient" => recipient,
-              "amount" => amount,
-          },
+                "owner" => sender,
+                "recipient" => recipient,
+                "amount" => amount,
+            },
         )
     }
 
@@ -48,10 +48,16 @@ impl CEP18 {
     }
 
     pub fn decimals(&self) -> u8 {
-        runtime::call_contract::<u8>(
+        runtime::call_contract::<u8>(self.contract_hash, "decimals", runtime_args! {})
+    }
+
+    pub fn balance_of(&self, address: Key) -> U256 {
+        runtime::call_contract::<U256>(
             self.contract_hash,
-            "decimals",
-            runtime_args! {},
+            "balance_of",
+            runtime_args! {
+                "address" => address
+            },
         )
     }
 }
