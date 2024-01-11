@@ -1,21 +1,21 @@
-use core::ops::{Div, Mul};
-use core::time::Duration;
+use core::ops::{Add, Div, Mul};
 
+use crate::enums::Address;
 use crate::interfaces::cep18::CEP18;
 use crate::{
     error::Error,
-    utils::{self, get_key},
+    utils::{self, get_current_address, get_key},
 };
 use alloc::{
     string::{String, ToString},
     vec,
 };
-use casper_contract::contract_api::{runtime, storage, system};
+use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     account::AccountHash,
     contracts::NamedKeys,
     runtime_args,
-    CLType::{self, URef, U64},
+    CLType::{self, URef},
     ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
     RuntimeArgs, U256,
 };
@@ -39,42 +39,52 @@ const STAKED_TOKEN: &str = "staked_token";
 
 const REWARD_RATE: &str = "reward_rate";
 const REWARD_PER_TOKEN_STORED: &str = "reward_per_token_stored";
-const PURSE: &str = "purse";
 
 const DECIMALS: &str = "decimals";
+
+// Dictionary
+const BALANCE_OF: &str = "balance_of";
 
 // Entry Points
 const ENTRY_POINT_INIT: &str = "init";
 const ENTRY_POINT_NOTIFY_REWARD_AMOUNT: &str = "notify_reward_amount";
-const ENTRY_POINT_SET_REWARD_DURATION: &str = "set_rewards_duration";
+// const ENTRY_POINT_SET_REWARD_DURATION: &str = "set_rewards_duration";
 const ENTRY_POINT_STAKE: &str = "stake";
 
-// #[no_mangle]
-// pub extern "C" fn stake() {
-//     let amount: U256 = runtime::get_named_arg(AMOUNT);
+#[no_mangle]
+pub extern "C" fn stake() {
+    let amount: U256 = runtime::get_named_arg(AMOUNT);
 
-//     if amount.as_u64().le(&0u64) {
-//         runtime::revert(Error::StakeAmountError);
-//     }
+    if amount.is_zero() {
+        runtime::revert(Error::StakeAmountError);
+    }
 
-//     let owner: Key = utils::read_from(OWNER);
-//     let staker: Key = runtime::get_caller().into();
+    let staker: Key = runtime::get_caller().into();
+    let contract_address: Address = get_current_address();
+    let staked_token: Key = utils::read_from(STAKED_TOKEN);
 
-//     if staker == owner {
-//         runtime::revert(Error::CannotTargetSelfUser);
-//     }
+    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
 
-//     let mut total_supply: u64 = utils::read_from(TOTAL_SUPPLY);
+    let cep18: CEP18 = CEP18::new(staked_token.into_hash().map(ContractHash::new).unwrap());
+    cep18.transfer_from(staker, contract_address.into(), amount);
 
-//     let staked_token: Key = runtime::get_named_arg(STAKED_TOKEN);
-//     let purse: Key = get_key(PURSE);
+    let balance_of_dict = *runtime::get_key(BALANCE_OF).unwrap().as_uref().unwrap();
 
-//     let cep18: CEP18 = CEP18::new(staked_token.into_hash().map(ContractHash::new).unwrap());
-//     cep18.transfer_from(staker, purse, amount);
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker);
 
-//     total_supply = total_supply + amount.as_u64();
-//     runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply).into());
-// }
+    let balance: U256 = match storage::dictionary_get::<U256>(balance_of_dict, &staker_item_key) {
+        Ok(Some(balance)) => balance,
+        _ => U256::zero(),
+    };
+
+
+    storage::dictionary_put(balance_of_dict, &staker_item_key, balance.add(amount));
+
+    runtime::put_key(
+        TOTAL_SUPPLY,
+        storage::new_uref(total_supply.add(amount)).into(),
+    );
+}
 
 // #[no_mangle]
 // pub extern "C" fn set_rewards_duration() {
@@ -108,7 +118,7 @@ pub extern "C" fn notify_reward_amount() {
 
     let duration: u64 = utils::read_from(DURATION);
 
-    let (reward_per_token_stored_mutate) = update_reward(
+    let reward_per_token_stored_mutate = update_reward(
         finish_at,
         now,
         token_decimal,
@@ -147,10 +157,11 @@ pub extern "C" fn init() {
         REWARD_PER_TOKEN_STORED,
         storage::new_uref(U256::zero()).into(),
     );
-    runtime::put_key(PURSE, system::create_purse().into());
     runtime::put_key(TOTAL_SUPPLY, storage::new_uref(U256::zero()).into());
     runtime::put_key(REWARD_RATE, storage::new_uref(U256::zero()).into());
     runtime::put_key(FINISH_AT, storage::new_uref(0u64).into());
+
+    storage::new_dictionary(BALANCE_OF).unwrap_or_default();
 }
 
 // constructor
@@ -198,20 +209,20 @@ pub extern "C" fn call() {
     //     EntryPointType::Contract
     // );
 
-    // let stake_entry_point: EntryPoint = EntryPoint::new(
-    //     ENTRY_POINT_STAKE,
-    //     vec![Parameter::new(AMOUNT, CLType::U256)],
-    //     URef,
-    //     EntryPointAccess::Public,
-    //     EntryPointType::Contract
-    // );
+    let stake_entry_point: EntryPoint = EntryPoint::new(
+        ENTRY_POINT_STAKE,
+        vec![Parameter::new(AMOUNT, CLType::U256)],
+        URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
 
     let mut entry_points: EntryPoints = EntryPoints::new();
 
     entry_points.add_entry_point(init_entry_point);
     entry_points.add_entry_point(notify_reward_amount_entry_point);
     // entry_points.add_entry_point(set_rewards_duration_entry_point);
-    // entry_points.add_entry_point(stake_entry_point);
+    entry_points.add_entry_point(stake_entry_point);
 
     // let contract_id: String = "ID_".to_owned() + &now.to_string();
 

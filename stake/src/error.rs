@@ -9,6 +9,7 @@ pub enum Error {
     RewardDurationError = 3,
     StakeAmountError = 4,
     CannotTargetSelfUser = 5,
+    InvalidKey = 6,
 }
 
 impl From<Error> for ApiError {

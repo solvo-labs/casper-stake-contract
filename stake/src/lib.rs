@@ -2,7 +2,8 @@
 #![no_main]
 
 extern crate alloc;
-mod stake;
+mod enums;
 mod error;
-mod utils;
 mod interfaces;
+mod stake;
+mod utils;
