@@ -21,6 +21,7 @@ const stakeWasm = new Uint8Array(fs.readFileSync("/home/oguz/Project/casper-stak
 // const stakeWasm = new Uint8Array(fs.readFileSync(CONTRACT_WASM_PATH));
 
 const keys = Keys.Ed25519.loadKeyPairFromPrivateFile("secret.pem");
+const user = Keys.Ed25519.loadKeyPairFromPrivateFile("user.pem");
 
 const contract = new Contracts.Contract(client);
 
@@ -42,8 +43,8 @@ class CasperHelpers {
     }
 }
 
-const token = "ba846af4c747704a9c21f87a8924af5c1996e92bfd33cd30e0e1be5288078bb0";
-const contractHash = "hash-ccf8fc64fcacb6c02f8887ba23c9ffa631da625b628f4755048242f941aa9dae";
+const token = "35cbaceb6e33b052f0df1f12b60a49d3fa6c215f4a3cec19ca9f559a38bca99b";
+const contractHash = "hash-aebce8084c116aea32ae69c446ca25acaf2054072978ab437f5993c319391583";
 
 async function install() {
     const args = RuntimeArgs.fromMap({
@@ -88,7 +89,6 @@ const notify_reward_amount = async () => {
     contract.setContractHash(contractHash);
 
     const args = RuntimeArgs.fromMap({
-        // duration: CLValueBuilder.u64(604800),
         amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
     });
 
@@ -104,16 +104,38 @@ const notify_reward_amount = async () => {
     }
 };
 
-const approve = async () => {
+// const approve = async () => {
+//     contract.setContractHash("hash-" + token);
+//
+//     const args = RuntimeArgs.fromMap({
+//         // duration: CLValueBuilder.u64(604800),
+//         spender: CasperHelpers.stringToKey("14407677ef0f1a65f14a3782605961dfe08e3cff2848b050fdaa1575bedee255"),
+//         amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
+//     });
+//
+//     const deploy = contract.callEntrypoint("approve", args, keys.publicKey, "casper-test", "10000000000", [keys]);
+//
+//     try {
+//         const tx = await client.putDeploy(deploy);
+//
+//         console.log("https://testnet.cspr.live/deploy/" + tx);
+//     } catch (error) {
+//         console.log("error", error);
+//         return error;
+//     }
+// };
+
+// user.pem
+const increase_allowance = async () => {
     contract.setContractHash("hash-" + token);
 
     const args = RuntimeArgs.fromMap({
-        // duration: CLValueBuilder.u64(604800),
-        spender: CasperHelpers.stringToKey("14407677ef0f1a65f14a3782605961dfe08e3cff2848b050fdaa1575bedee255"),
-        amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
+        // Spender: Contract Package Hash
+        spender: CasperHelpers.stringToKey("239fbb241fa2d12e39442290a1f8b9c1082781cdb5649ef2cc19ecb9cabd12e4"),
+        amount: CLValueBuilder.u256(10 * Math.pow(10, 8)),
     });
 
-    const deploy = contract.callEntrypoint("approve", args, keys.publicKey, "casper-test", "10000000000", [keys]);
+    const deploy = contract.callEntrypoint("increase_allowance", args, user.publicKey, "casper-test", "10000000000", [user]);
 
     try {
         const tx = await client.putDeploy(deploy);
@@ -125,40 +147,15 @@ const approve = async () => {
     }
 };
 
-const allowance = async () => {
-    contract.setContractHash("hash-" + token);
-
-    // const args = RuntimeArgs.fromMap({
-    //     owner: CLValueBuilder.key(keys.publicKey),
-    //     spender: CasperHelpers.stringToKey("da9c4ac649cf16bee27a09734d3a4a34ab530743aa307e2fe2d706cbb991a032"),
-    // });
-
-    const args = RuntimeArgs.fromMap({
-        // contractin package hashi
-        spender: CasperHelpers.stringToKey("40c39b8fe67a33891d2d6bb4aa5150f82dd0bb5492265849ba7c2575377feedf"),
-        amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
-    });
-
-    const deploy = contract.callEntrypoint("increase_allowance", args, keys.publicKey, "casper-test", "10000000000", [keys]);
-
-    try {
-        const tx = await client.putDeploy(deploy);
-
-        console.log("https://testnet.cspr.live/deploy/" + tx);
-    } catch (error) {
-        console.log("error", error);
-        return error;
-    }
-};
-
+// user.pem
 const stake = async () => {
     contract.setContractHash(contractHash);
 
     const args = RuntimeArgs.fromMap({
-        amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
+        amount: CLValueBuilder.u256(10 * Math.pow(10, 8)),
     });
 
-    const deploy = contract.callEntrypoint("stake", args, keys.publicKey, "casper-test", "1000000000", [keys]);
+    const deploy = contract.callEntrypoint("stake", args, user.publicKey, "casper-test", "1000000000", [user]);
 
     try {
         const tx = await client.putDeploy(deploy);
@@ -174,7 +171,6 @@ const stake = async () => {
 
 // notify_reward_amount();
 
-// approve();
-// allowance();
+// increase_allowance();
 
 stake();

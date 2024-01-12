@@ -1,4 +1,4 @@
-use core::ops::{Add, Div, Mul};
+use core::ops::{Add, Div, Mul, Sub};
 
 use crate::enums::Address;
 use crate::interfaces::cep18::CEP18;
@@ -40,10 +40,11 @@ const STAKED_TOKEN: &str = "staked_token";
 const REWARD_RATE: &str = "reward_rate";
 const REWARD_PER_TOKEN_STORED: &str = "reward_per_token_stored";
 
-const DECIMALS: &str = "decimals";
 
 // Dictionary
 const BALANCE_OF: &str = "balance_of";
+const REWARDS: &str = "rewards";
+const USER_REWARD_PER_TOKEN_PAID: &str = "user_reward_per_token_paid";
 
 // Entry Points
 const ENTRY_POINT_INIT: &str = "init";
@@ -59,18 +60,34 @@ pub extern "C" fn stake() {
         runtime::revert(Error::StakeAmountError);
     }
 
-    let staker: Key = runtime::get_caller().into();
+    let staker: AccountHash = runtime::get_caller();
     let contract_address: Address = get_current_address();
     let staked_token: Key = utils::read_from(STAKED_TOKEN);
 
     let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
+    let reward_rate: U256 = utils::read_from(REWARD_RATE);
+    let update_at: u64 = utils::read_from(UPDATE_AT);
+
+    let finish_at = utils::read_from(FINISH_AT);
+    let now: u64 = runtime::get_blocktime().into();
+    let reward_per_token_stored: U256 = utils::read_from(REWARD_PER_TOKEN_STORED);
+
+    let (reward_per_token_stored_mutate, update_at): (U256, u64) =
+        update_reward(finish_at,
+                      now,
+                      total_supply, // only update reward
+                      reward_rate,
+                      reward_per_token_stored, // only update reward
+                      update_at, // only update reward
+                      Option::from(staker),
+        );
 
     let cep18: CEP18 = CEP18::new(staked_token.into_hash().map(ContractHash::new).unwrap());
-    cep18.transfer_from(staker, contract_address.into(), amount);
+    cep18.transfer_from(staker.into(), contract_address.into(), amount);
 
     let balance_of_dict = *runtime::get_key(BALANCE_OF).unwrap().as_uref().unwrap();
 
-    let staker_item_key: String = utils::encode_dictionary_item_key(staker);
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
 
     let balance: U256 = match storage::dictionary_get::<U256>(balance_of_dict, &staker_item_key) {
         Ok(Some(balance)) => balance,
@@ -80,10 +97,9 @@ pub extern "C" fn stake() {
 
     storage::dictionary_put(balance_of_dict, &staker_item_key, balance.add(amount));
 
-    runtime::put_key(
-        TOTAL_SUPPLY,
-        storage::new_uref(total_supply.add(amount)).into(),
-    );
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.add(amount)).into());
+    runtime::put_key(REWARD_PER_TOKEN_STORED, storage::new_uref(reward_per_token_stored_mutate).into());
+    runtime::put_key(UPDATE_AT, storage::new_uref(update_at).into());
 }
 
 // #[no_mangle]
@@ -114,18 +130,16 @@ pub extern "C" fn notify_reward_amount() {
     let reward_rate: U256 = utils::read_from(REWARD_RATE);
     let update_at: u64 = utils::read_from(UPDATE_AT);
 
-    let token_decimal: u8 = utils::read_from(DECIMALS);
-
     let duration: u64 = utils::read_from(DURATION);
 
     let reward_per_token_stored_mutate = update_reward(
         finish_at,
         now,
-        token_decimal,
-        total_supply,
+        total_supply, // only update reward
         reward_rate,
-        reward_per_token_stored,
-        update_at,
+        reward_per_token_stored, // only update reward
+        update_at, // only update reward
+        None,
     );
 
     let reward_rate_mut: U256;
@@ -162,6 +176,8 @@ pub extern "C" fn init() {
     runtime::put_key(FINISH_AT, storage::new_uref(0u64).into());
 
     storage::new_dictionary(BALANCE_OF).unwrap_or_default();
+    storage::new_dictionary(REWARDS).unwrap_or_default();
+    storage::new_dictionary(USER_REWARD_PER_TOKEN_PAID).unwrap_or_default();
 }
 
 // constructor
@@ -169,9 +185,6 @@ pub extern "C" fn init() {
 pub extern "C" fn call() {
     let staked_token: Key = runtime::get_named_arg(STAKED_TOKEN);
     let duration: u64 = runtime::get_named_arg(DURATION);
-
-    let cep18: CEP18 = CEP18::new(staked_token.into_hash().map(ContractHash::new).unwrap());
-    let decimals: u8 = cep18.decimals();
 
     let owner: AccountHash = runtime::get_caller();
 
@@ -182,7 +195,6 @@ pub extern "C" fn call() {
         STAKED_TOKEN.to_string(),
         storage::new_uref(staked_token).into(),
     );
-    named_keys.insert(DECIMALS.to_string(), storage::new_uref(decimals).into());
     named_keys.insert(DURATION.to_string(), storage::new_uref(duration).into());
 
     let init_entry_point: EntryPoint = EntryPoint::new(
@@ -258,14 +270,13 @@ pub fn only_owner() {
 pub fn update_reward(
     finish_at: u64,
     now: u64,
-    token_decimal: u8,
     total_supply: U256,
     reward_rate: U256,
     reward_per_token_stored: U256,
     update_at: u64,
+    account: Option<AccountHash>,
 ) -> (U256, u64) {
     let reward_per_token_stored: U256 = reward_per_token(
-        token_decimal,
         total_supply,
         reward_rate,
         reward_per_token_stored,
@@ -275,15 +286,51 @@ pub fn update_reward(
     );
     let update_at: u64 = last_time_reward_applicable(finish_at, now);
 
-    let admin: AccountHash = get_key(OWNER);
-    let caller: AccountHash = runtime::get_caller();
-    if admin != caller {}
+    match account {
+        Some(acc) => {
+            let acc_key: String = utils::encode_dictionary_item_key(acc.into());
+
+            let balance_of_dict = *runtime::get_key(BALANCE_OF).unwrap().as_uref().unwrap();
+            let rewards_dict = *runtime::get_key(REWARDS).unwrap().as_uref().unwrap();
+            let user_reward_per_token_paid_dict = *runtime::get_key(USER_REWARD_PER_TOKEN_PAID).unwrap().as_uref().unwrap();
+
+            let account_balance: U256 = match storage::dictionary_get::<U256>(balance_of_dict, &acc_key) {
+                Ok(Some(account_balance)) => account_balance,
+                _ => U256::zero(),
+            };
+
+            let account_reward: U256 = match storage::dictionary_get::<U256>(rewards_dict, &acc_key) {
+                Ok(Some(account_reward)) => account_reward,
+                _ => U256::zero(),
+            };
+
+            let account_user_reward_per_token_paid: U256 = match storage::dictionary_get::<U256>(user_reward_per_token_paid_dict, &acc_key) {
+                Ok(Some(account_user_reward_per_token_paid)) => account_user_reward_per_token_paid,
+                _ => U256::zero(),
+            };
+
+            let rewards: U256 = earned(
+                account_balance,
+                account_user_reward_per_token_paid,
+                account_reward,
+                total_supply,
+                reward_rate,
+                reward_per_token_stored,
+                finish_at,
+                now,
+                update_at,
+            );
+
+            storage::dictionary_put(rewards_dict, &acc_key, rewards);
+            storage::dictionary_put(user_reward_per_token_paid_dict, &acc_key, reward_per_token_stored);
+        }
+        None => {}
+    };
 
     (reward_per_token_stored, update_at)
 }
 
 fn reward_per_token(
-    token_decimal: u8,
     total_supply: U256,
     reward_rate: U256,
     reward_per_token_stored: U256,
@@ -291,15 +338,13 @@ fn reward_per_token(
     now: u64,
     update_at: u64,
 ) -> U256 {
-    let decimal: U256 = U256::from(10u64.pow(token_decimal as u32));
-
     if total_supply.is_zero() {
         return reward_per_token_stored;
     }
 
     let time_elapsed = last_time_reward_applicable(finish_at, now) - update_at;
     let reward_increase =
-        (reward_rate * time_elapsed * decimal) / U256::from(total_supply.as_u64());
+        (reward_rate * time_elapsed) / U256::from(total_supply.as_u64());
 
     reward_per_token_stored + U256::from(reward_increase.as_u64())
 }
@@ -314,4 +359,18 @@ pub fn min(value_1: u64, value_2: u64) -> u64 {
     } else {
         value_2
     }
+}
+
+pub fn earned(account_balance: U256,
+              account_user_reward_per_token_paid: U256,
+              account_reward: U256,
+              total_supply: U256,
+              reward_rate: U256,
+              reward_per_token_stored: U256,
+              finish_at: u64,
+              now: u64,
+              update_at: u64,
+) -> U256 {
+    let reward_per_token: U256 = reward_per_token(total_supply, reward_rate, reward_per_token_stored, finish_at, now, update_at);
+    account_balance.mul(reward_per_token.sub(account_user_reward_per_token_paid)).add(account_reward)
 }
