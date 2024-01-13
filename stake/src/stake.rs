@@ -4,7 +4,7 @@ use crate::enums::Address;
 use crate::interfaces::cep18::CEP18;
 use crate::{
     error::Error,
-    utils::{self, get_current_address, get_key},
+    utils::{self, get_current_address},
 };
 use alloc::{
     string::{String, ToString},
@@ -21,182 +21,245 @@ use casper_types::{
 };
 
 // Variables
-// This is the address of the who deployed the stake.
-const OWNER: &str = "owner";
-// Duration of rewards to be paid out (in seconds)
-const DURATION: &str = "duration";
-// Timestamp of when finish stake program
-const FINISH_AT: &str = "finish_at";
-// Minimum of last updated time and reward finish time
-const UPDATE_AT: &str = "update_at";
-//The reward amount determined by the owner.
+const TOKEN: &str = "token";
+const FIXED_ARP: &str = "fixed_apr";
+const MIN_APR: &str = "min_apr";
+const MAX_APR: &str = "max_apr";
+const MAX_CAPACITY: &str = "max_capacity";
+const MIN_STAKE: &str = "min_stake";
+const MAX_STAKE: &str = "max_stake";
+const LOCK_PERIOD: &str = "lock_period";
+const DEPOSIT_START_TIME: &str = "deposit_start_time";
+const DEPOSIT_END_TIME: &str = "deposit_start_time";
 const AMOUNT: &str = "amount";
-// The stake wallet to which all stakes will be transferred.
-const TOTAL_SUPPLY: &str = "total_supply";
-// The token type to be staked
-const STAKED_TOKEN: &str = "staked_token";
-// The amount of tokens to be stake, withdraw and earned
 
-const REWARD_RATE: &str = "reward_rate";
-const REWARD_PER_TOKEN_STORED: &str = "reward_per_token_stored";
+// Dictionaries
+const STAKES_DICT: &str = "stakes_dict";
+const LAST_CLAIM_TIME_DICT: &str = "last_claim_time";
 
-
-// Dictionary
-const BALANCE_OF: &str = "balance_of";
-const REWARDS: &str = "rewards";
-const USER_REWARD_PER_TOKEN_PAID: &str = "user_reward_per_token_paid";
-
-// Entry Points
+// Entry points
 const ENTRY_POINT_INIT: &str = "init";
-const ENTRY_POINT_NOTIFY_REWARD_AMOUNT: &str = "notify_reward_amount";
-// const ENTRY_POINT_SET_REWARD_DURATION: &str = "set_rewards_duration";
 const ENTRY_POINT_STAKE: &str = "stake";
+const ENTRY_POINT_UNSTAKE: &str = "unstake";
+
 
 #[no_mangle]
 pub extern "C" fn stake() {
-    let amount: U256 = runtime::get_named_arg(AMOUNT);
+    let now: u64 = runtime::get_blocktime().into();
+    let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
 
-    if amount.is_zero() {
+    if deposit_start_time.gt(&now) && now.gt(&deposit_end_time) {
+        runtime::revert(Error::DepositPeriodEnded);
+    }
+
+    let amount: U256 = runtime::get_named_arg(AMOUNT);
+    let min_stake: u64 = utils::read_from(MIN_STAKE);
+    let max_stake: u64 = utils::read_from(MAX_STAKE);
+
+    if U256::from(min_stake).gt(&amount) && amount.gt(&U256::from(max_stake)) {
         runtime::revert(Error::StakeAmountError);
     }
 
     let staker: AccountHash = runtime::get_caller();
-    let contract_address: Address = get_current_address();
-    let staked_token: Key = utils::read_from(STAKED_TOKEN);
-
-    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
-    let reward_rate: U256 = utils::read_from(REWARD_RATE);
-    let update_at: u64 = utils::read_from(UPDATE_AT);
-
-    let finish_at = utils::read_from(FINISH_AT);
-    let now: u64 = runtime::get_blocktime().into();
-    let reward_per_token_stored: U256 = utils::read_from(REWARD_PER_TOKEN_STORED);
-
-    let (reward_per_token_stored_mutate, update_at): (U256, u64) =
-        update_reward(finish_at,
-                      now,
-                      total_supply, // only update reward
-                      reward_rate,
-                      reward_per_token_stored, // only update reward
-                      update_at, // only update reward
-                      Option::from(staker),
-        );
-
-    let cep18: CEP18 = CEP18::new(staked_token.into_hash().map(ContractHash::new).unwrap());
-    cep18.transfer_from(staker.into(), contract_address.into(), amount);
-
-    let balance_of_dict = *runtime::get_key(BALANCE_OF).unwrap().as_uref().unwrap();
-
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
+    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
 
-    let balance: U256 = match storage::dictionary_get::<U256>(balance_of_dict, &staker_item_key) {
-        Ok(Some(balance)) => balance,
+    let stake: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
+        Ok(Some(stake)) => stake,
         _ => U256::zero(),
     };
 
 
-    storage::dictionary_put(balance_of_dict, &staker_item_key, balance.add(amount));
+    let token: Key = utils::read_from(TOKEN);
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+    let staker_balance: U256 = cep18.balance_of(staker.into());
 
-    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.add(amount)).into());
-    runtime::put_key(REWARD_PER_TOKEN_STORED, storage::new_uref(reward_per_token_stored_mutate).into());
-    runtime::put_key(UPDATE_AT, storage::new_uref(update_at).into());
+    if stake.add(amount).le(&U256::from(max_stake)) {
+        runtime::revert(Error::ExceedsMaxCapacity);
+    }
+
+    if staker_balance.lt(&amount) {
+        runtime::revert(Error::InsufficientBalance);
+    }
+
+    let last_claim_time = *runtime::get_key(LAST_CLAIM_TIME_DICT).unwrap().as_uref().unwrap();
+    let contract_address: Address = get_current_address();
+
+    cep18.transfer_from(staker.into(), contract_address.into(), amount);
+
+    storage::dictionary_put(stake_dict, &staker_item_key, stake.add(amount));
+    storage::dictionary_put(last_claim_time, &staker_item_key, now.to_string());
 }
 
-// #[no_mangle]
-// pub extern "C" fn set_rewards_duration() {
-//     let finish_at: u64 = utils::read_from(FINISH_AT);
-//     let now: u64 = runtime::get_blocktime().into();
-
-//     if finish_at.gt(&now) {
-//         runtime::revert(Error::RewardDurationError);
-//     }
-
-//     let duration: u64 = runtime::get_named_arg(DURATION);
-//     runtime::put_key(DURATION, storage::new_uref(duration).into());
-// }
-
 #[no_mangle]
-pub extern "C" fn notify_reward_amount() {
-    only_owner();
+pub extern "C" fn unstake() {
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+    let now: u64 = runtime::get_blocktime().into();
+
+    if now.lt(&deposit_end_time) {
+        runtime::revert(Error::DepositPeriodEnded);
+    }
 
     let amount: U256 = runtime::get_named_arg(AMOUNT);
 
-    let finish_at: u64 = utils::read_from(FINISH_AT);
-    let now: u64 = runtime::get_blocktime().into();
+    let staker: AccountHash = runtime::get_caller();
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
+    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+    let last_claim_time_dict = *runtime::get_key(LAST_CLAIM_TIME_DICT).unwrap().as_uref().unwrap();
 
-    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
-    let reward_per_token_stored: U256 = utils::read_from(REWARD_PER_TOKEN_STORED);
+    let user_stake: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
+        Ok(Some(user_stake)) => user_stake,
+        _ => U256::zero(),
+    };
 
-    let reward_rate: U256 = utils::read_from(REWARD_RATE);
-    let update_at: u64 = utils::read_from(UPDATE_AT);
+    let user_last_claim_time: u64 = match storage::dictionary_get::<u64>(last_claim_time_dict, &staker_item_key) {
+        Ok(Some(user_last_claim_time)) => user_last_claim_time,
+        _ => 0u64,
+    };
 
-    let duration: u64 = utils::read_from(DURATION);
-
-    let reward_per_token_stored_mutate = update_reward(
-        finish_at,
-        now,
-        total_supply, // only update reward
-        reward_rate,
-        reward_per_token_stored, // only update reward
-        update_at, // only update reward
-        None,
-    );
-
-    let reward_rate_mut: U256;
-    if now.ge(&finish_at) {
-        reward_rate_mut = amount.div(U256::from(duration));
-    } else {
-        let remaining_rewards: U256 = U256::from(finish_at - now).mul(reward_rate);
-        reward_rate_mut = U256::from(amount + remaining_rewards).div(U256::from(duration));
+    if amount.is_zero() && user_stake.lt(&amount) {
+        runtime::revert(Error::InvalidUnstakeAmount);
     }
 
-    if reward_rate_mut.is_zero() {
-        runtime::revert(Error::RewardRateError)
-    }
+    let locked_period: u64 = utils::read_from(LOCK_PERIOD);
+    let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
+    let fixed_apr: u64 = utils::read_from(FIXED_ARP);
+    let min_apr: u64 = utils::read_from(MIN_APR);
+    let max_apr: u64 = utils::read_from(MAX_APR);
 
-    runtime::put_key(
-        REWARD_PER_TOKEN_STORED,
-        storage::new_uref(reward_per_token_stored_mutate).into(),
-    );
-    runtime::put_key(REWARD_RATE, storage::new_uref(reward_rate_mut).into());
-    runtime::put_key(UPDATE_AT, storage::new_uref(now).into());
-    runtime::put_key(FINISH_AT, storage::new_uref(now + duration).into());
-    //runtime::put_key(REWARD, storage::new_uref(reward).into());
+    let reward: U256 = calculate_reward(now, deposit_end_time, deposit_start_time, user_stake, user_last_claim_time, locked_period, fixed_apr, min_apr, max_apr);
+
+    let token: Key = utils::read_from(TOKEN);
+    let contract_address: Address = get_current_address();
+
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+    cep18.transfer_from(contract_address.into(), staker.into(), amount.add(reward));
+
+    storage::dictionary_put(stake_dict, &staker_item_key, user_stake.sub(amount));
+    storage::dictionary_put(last_claim_time_dict, &staker_item_key, now);
 }
 
 #[no_mangle]
-pub extern "C" fn init() {
-    runtime::put_key(UPDATE_AT, storage::new_uref(0u64).into());
-    runtime::put_key(
-        REWARD_PER_TOKEN_STORED,
-        storage::new_uref(U256::zero()).into(),
-    );
-    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(U256::zero()).into());
-    runtime::put_key(REWARD_RATE, storage::new_uref(U256::zero()).into());
-    runtime::put_key(FINISH_AT, storage::new_uref(0u64).into());
+pub extern "C" fn claim_reward() {
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+    let now: u64 = runtime::get_blocktime().into();
+    let staker: AccountHash = runtime::get_caller();
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
+    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+    let last_claim_time_dict = *runtime::get_key(LAST_CLAIM_TIME_DICT).unwrap().as_uref().unwrap();
 
-    storage::new_dictionary(BALANCE_OF).unwrap_or_default();
-    storage::new_dictionary(REWARDS).unwrap_or_default();
-    storage::new_dictionary(USER_REWARD_PER_TOKEN_PAID).unwrap_or_default();
+    let user_stake: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
+        Ok(Some(user_stake)) => user_stake,
+        _ => U256::zero(),
+    };
+
+    let user_last_claim_time: u64 = match storage::dictionary_get::<u64>(last_claim_time_dict, &staker_item_key) {
+        Ok(Some(user_last_claim_time)) => user_last_claim_time,
+        _ => 0u64,
+    };
+
+    let locked_period: u64 = utils::read_from(LOCK_PERIOD);
+    let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
+    let fixed_apr: u64 = utils::read_from(FIXED_ARP);
+    let min_apr: u64 = utils::read_from(MIN_APR);
+    let max_apr: u64 = utils::read_from(MAX_APR);
+
+
+    let reward: U256 = calculate_reward(now, deposit_end_time, deposit_start_time, user_stake, user_last_claim_time, locked_period, fixed_apr, min_apr, max_apr);
+
+    let token: Key = utils::read_from(TOKEN);
+    let contract_address: Address = get_current_address();
+
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+    cep18.transfer_from(contract_address.into(), staker.into(), reward);
+
+}
+
+pub fn calculate_reward(
+    now: u64,
+    deposit_end_time: u64,
+    deposit_start_time: u64,
+    user_stake_amount: U256,
+    user_last_claim_time: u64,
+    locked_period: u64,
+    fixed_apr: u64,
+    min_apr: u64,
+    max_apr: u64,
+) -> U256 {
+    if now.lt(&deposit_end_time) {
+        runtime::revert(Error::RewardCalculationPeriodError);
+    }
+
+    let elapsed_time = now.sub(user_last_claim_time);
+    let dynamic_apr = calculate_dynamic_apr(now, deposit_start_time, locked_period, fixed_apr, min_apr, max_apr);
+
+    let period: u64 = 31536000000;
+
+    let reward: U256 = user_stake_amount.mul(U256::from(dynamic_apr).mul(U256::from(elapsed_time))).div(U256::from(period));
+    return reward;
+}
+
+pub fn calculate_dynamic_apr(
+    now: u64,
+    deposit_start_time: u64,
+    locked_period: u64,
+    fixed_apr: u64,
+    min_apr: u64,
+    max_apr: u64,
+) -> u64 {
+    if locked_period.eq(&0u64) {
+        return fixed_apr;
+    }
+
+    let elapsed_time: u64 = now.sub(deposit_start_time);
+    let total_apr_increase: u64 = max_apr.sub(min_apr);
+
+    if elapsed_time.ge(&locked_period) {
+        return min_apr.add(total_apr_increase);
+    }
+
+    let apr_increase_per_second = total_apr_increase.div(locked_period);
+
+    return apr_increase_per_second.mul(elapsed_time).add(min_apr);
+}
+
+
+#[no_mangle]
+pub extern "C" fn init() {
+    storage::new_dictionary(STAKES_DICT).unwrap_or_default();
+    storage::new_dictionary(LAST_CLAIM_TIME_DICT).unwrap_or_default();
 }
 
 // constructor
 #[no_mangle]
 pub extern "C" fn call() {
-    let staked_token: Key = runtime::get_named_arg(STAKED_TOKEN);
-    let duration: u64 = runtime::get_named_arg(DURATION);
+    let token: Key = runtime::get_named_arg(TOKEN);
+    let fixed_apr: u64 = runtime::get_named_arg(FIXED_ARP);
+    let min_apr: u64 = runtime::get_named_arg(MIN_APR);
+    let max_apr: u64 = runtime::get_named_arg(MAX_APR);
+    let max_capacity: u64 = runtime::get_named_arg(MAX_CAPACITY);
+    let min_stake: u64 = runtime::get_named_arg(MIN_STAKE);
+    let max_stake: u64 = runtime::get_named_arg(MAX_STAKE);
+    let lock_period: u64 = runtime::get_named_arg(LOCK_PERIOD);
+    let deposit_start_time: u64 = runtime::get_named_arg(DEPOSIT_START_TIME);
+    let deposit_end_time: u64 = runtime::get_named_arg(DEPOSIT_END_TIME);
 
-    let owner: AccountHash = runtime::get_caller();
 
     let mut named_keys = NamedKeys::new();
 
-    named_keys.insert(OWNER.to_string(), storage::new_uref(owner).into());
-    named_keys.insert(
-        STAKED_TOKEN.to_string(),
-        storage::new_uref(staked_token).into(),
-    );
-    named_keys.insert(DURATION.to_string(), storage::new_uref(duration).into());
+    named_keys.insert(TOKEN.to_string(), storage::new_uref(token).into());
+    named_keys.insert(FIXED_ARP.to_string(), storage::new_uref(fixed_apr).into());
+    named_keys.insert(MIN_APR.to_string(), storage::new_uref(min_apr).into());
+    named_keys.insert(MAX_APR.to_string(), storage::new_uref(max_apr).into());
+    named_keys.insert(MAX_CAPACITY.to_string(), storage::new_uref(max_capacity).into());
+    named_keys.insert(MIN_STAKE.to_string(), storage::new_uref(min_stake).into());
+    named_keys.insert(MAX_STAKE.to_string(), storage::new_uref(max_stake).into());
+    named_keys.insert(LOCK_PERIOD.to_string(), storage::new_uref(lock_period).into());
+    named_keys.insert(DEPOSIT_START_TIME.to_string(), storage::new_uref(deposit_start_time).into());
+    named_keys.insert(DEPOSIT_END_TIME.to_string(), storage::new_uref(deposit_end_time).into());
 
+    //
     let init_entry_point: EntryPoint = EntryPoint::new(
         ENTRY_POINT_INIT,
         vec![],
@@ -204,22 +267,6 @@ pub extern "C" fn call() {
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
-
-    let notify_reward_amount_entry_point: EntryPoint = EntryPoint::new(
-        ENTRY_POINT_NOTIFY_REWARD_AMOUNT,
-        vec![Parameter::new(AMOUNT, CLType::U256)],
-        URef,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-
-    // let set_rewards_duration_entry_point: EntryPoint = EntryPoint::new(
-    //     ENTRY_POINT_SET_REWARD_DURATION,
-    //     vec![Parameter::new(DURATION, U64)],
-    //     URef,
-    //     EntryPointAccess::Public,
-    //     EntryPointType::Contract
-    // );
 
     let stake_entry_point: EntryPoint = EntryPoint::new(
         ENTRY_POINT_STAKE,
@@ -229,23 +276,28 @@ pub extern "C" fn call() {
         EntryPointType::Contract,
     );
 
+    let unstake_entry_point: EntryPoint = EntryPoint::new(
+        ENTRY_POINT_UNSTAKE,
+        vec![Parameter::new(AMOUNT, CLType::U256)],
+        URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+
     let mut entry_points: EntryPoints = EntryPoints::new();
 
     entry_points.add_entry_point(init_entry_point);
-    entry_points.add_entry_point(notify_reward_amount_entry_point);
-    // entry_points.add_entry_point(set_rewards_duration_entry_point);
     entry_points.add_entry_point(stake_entry_point);
-
-    // let contract_id: String = "ID_".to_owned() + &now.to_string();
+    entry_points.add_entry_point(unstake_entry_point);
 
     let ph_text: String = String::from("stake_package_hash_");
     let ch_text: String = String::from("stake_contract_hash_");
     let au_text: String = String::from("stake_access_uref_");
-
+    //
     let package_hash_text = ph_text;
     let contract_hash_text = ch_text;
     let uref_name_text = au_text;
-
+    //
     let (contract_hash, _contract_version) = storage::new_contract(
         entry_points,
         Some(named_keys),
@@ -256,121 +308,4 @@ pub extern "C" fn call() {
     runtime::put_key(&contract_hash_text, contract_hash.into());
 
     runtime::call_contract::<()>(contract_hash, ENTRY_POINT_INIT, runtime_args! {});
-}
-
-// internal functions
-pub fn only_owner() {
-    let admin: AccountHash = get_key(OWNER);
-    let caller: AccountHash = runtime::get_caller();
-    if admin != caller {
-        runtime::revert(Error::AdminError)
-    }
-}
-
-pub fn update_reward(
-    finish_at: u64,
-    now: u64,
-    total_supply: U256,
-    reward_rate: U256,
-    reward_per_token_stored: U256,
-    update_at: u64,
-    account: Option<AccountHash>,
-) -> (U256, u64) {
-    let reward_per_token_stored: U256 = reward_per_token(
-        total_supply,
-        reward_rate,
-        reward_per_token_stored,
-        finish_at,
-        now,
-        update_at,
-    );
-    let update_at: u64 = last_time_reward_applicable(finish_at, now);
-
-    match account {
-        Some(acc) => {
-            let acc_key: String = utils::encode_dictionary_item_key(acc.into());
-
-            let balance_of_dict = *runtime::get_key(BALANCE_OF).unwrap().as_uref().unwrap();
-            let rewards_dict = *runtime::get_key(REWARDS).unwrap().as_uref().unwrap();
-            let user_reward_per_token_paid_dict = *runtime::get_key(USER_REWARD_PER_TOKEN_PAID).unwrap().as_uref().unwrap();
-
-            let account_balance: U256 = match storage::dictionary_get::<U256>(balance_of_dict, &acc_key) {
-                Ok(Some(account_balance)) => account_balance,
-                _ => U256::zero(),
-            };
-
-            let account_reward: U256 = match storage::dictionary_get::<U256>(rewards_dict, &acc_key) {
-                Ok(Some(account_reward)) => account_reward,
-                _ => U256::zero(),
-            };
-
-            let account_user_reward_per_token_paid: U256 = match storage::dictionary_get::<U256>(user_reward_per_token_paid_dict, &acc_key) {
-                Ok(Some(account_user_reward_per_token_paid)) => account_user_reward_per_token_paid,
-                _ => U256::zero(),
-            };
-
-            let rewards: U256 = earned(
-                account_balance,
-                account_user_reward_per_token_paid,
-                account_reward,
-                total_supply,
-                reward_rate,
-                reward_per_token_stored,
-                finish_at,
-                now,
-                update_at,
-            );
-
-            storage::dictionary_put(rewards_dict, &acc_key, rewards);
-            storage::dictionary_put(user_reward_per_token_paid_dict, &acc_key, reward_per_token_stored);
-        }
-        None => {}
-    };
-
-    (reward_per_token_stored, update_at)
-}
-
-fn reward_per_token(
-    total_supply: U256,
-    reward_rate: U256,
-    reward_per_token_stored: U256,
-    finish_at: u64,
-    now: u64,
-    update_at: u64,
-) -> U256 {
-    if total_supply.is_zero() {
-        return reward_per_token_stored;
-    }
-
-    let time_elapsed = last_time_reward_applicable(finish_at, now) - update_at;
-    let reward_increase =
-        (reward_rate * time_elapsed) / U256::from(total_supply.as_u64());
-
-    reward_per_token_stored + U256::from(reward_increase.as_u64())
-}
-
-pub fn last_time_reward_applicable(finish_at: u64, now: u64) -> u64 {
-    min(finish_at, now)
-}
-
-pub fn min(value_1: u64, value_2: u64) -> u64 {
-    if value_1.le(&value_2) {
-        value_1
-    } else {
-        value_2
-    }
-}
-
-pub fn earned(account_balance: U256,
-              account_user_reward_per_token_paid: U256,
-              account_reward: U256,
-              total_supply: U256,
-              reward_rate: U256,
-              reward_per_token_stored: U256,
-              finish_at: u64,
-              now: u64,
-              update_at: u64,
-) -> U256 {
-    let reward_per_token: U256 = reward_per_token(total_supply, reward_rate, reward_per_token_stored, finish_at, now, update_at);
-    account_balance.mul(reward_per_token.sub(account_user_reward_per_token_paid)).add(account_reward)
 }
