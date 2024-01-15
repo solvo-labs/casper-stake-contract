@@ -17,6 +17,8 @@ pub enum Error {
     DepositPeriodNotFinished = 10,
     InvalidUnstakeAmount = 11,
     RewardCalculationPeriodError = 12,
+    MaxCapacityError = 13,
+    LocktimeError = 14,
 }
 
 impl From<Error> for ApiError {
