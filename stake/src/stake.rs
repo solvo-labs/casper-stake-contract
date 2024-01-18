@@ -34,6 +34,7 @@ const DEPOSIT_START_TIME: &str = "deposit_start_time";
 const DEPOSIT_END_TIME: &str = "deposit_end_time";
 const AMOUNT: &str = "amount";
 const TOTAL_SUPPLY: &str = "total_supply";
+const STORAGE_KEY: &str = "storage_key";
 
 // Dictionaries
 const STAKES_DICT: &str = "stakes_dict";
@@ -245,6 +246,7 @@ pub extern "C" fn call() {
     let lock_period: u64 = runtime::get_named_arg(LOCK_PERIOD);
     let deposit_start_time: u64 = runtime::get_named_arg(DEPOSIT_START_TIME);
     let deposit_end_time: u64 = runtime::get_named_arg(DEPOSIT_END_TIME);
+    let storage_key: ContractHash = runtime::get_named_arg(STORAGE_KEY);
 
     let mut named_keys = NamedKeys::new();
 
@@ -315,6 +317,14 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(&contract_hash_text, contract_hash.into());
+
+    runtime::call_contract::<()>(
+        storage_key,
+        "insert",
+        runtime_args! {
+        "data" => contract_hash.to_string(),
+    }
+    );
 
     runtime::call_contract::<()>(contract_hash, ENTRY_POINT_INIT, runtime_args! {});
 }
