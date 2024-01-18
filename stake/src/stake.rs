@@ -33,6 +33,7 @@ const LOCK_PERIOD: &str = "lock_period";
 const DEPOSIT_START_TIME: &str = "deposit_start_time";
 const DEPOSIT_END_TIME: &str = "deposit_end_time";
 const AMOUNT: &str = "amount";
+const TOTAL_SUPPLY: &str = "total_supply";
 
 // Dictionaries
 const STAKES_DICT: &str = "stakes_dict";
@@ -103,7 +104,10 @@ pub extern "C" fn stake() {
 
     storage::dictionary_put(total_stake_dict, &staker_item_key, total_staked_balance);
     storage::dictionary_put(stake_dict, &staker_item_key, stake.add(amount));
-    storage::dictionary_put(last_claim_time, &staker_item_key, now.to_string());
+    storage::dictionary_put(last_claim_time, &staker_item_key, now);
+
+    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.add(amount)).into());
 }
 
 #[no_mangle]
@@ -135,7 +139,7 @@ pub extern "C" fn unstake() {
         _ => 0u64,
     };
 
-    if user_last_claim_time.add(lock_period).lt(&now) {
+    if user_last_claim_time.add(lock_period).gt(&now) {
         runtime::revert(Error::LocktimeError);
     }
 
@@ -168,6 +172,9 @@ pub extern "C" fn unstake() {
 
     storage::dictionary_put(stake_dict, &staker_item_key, user_stake.sub(amount));
     storage::dictionary_put(last_claim_time_dict, &staker_item_key, now);
+
+    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.sub(amount)).into());
 }
 
 #[no_mangle]
@@ -220,6 +227,7 @@ pub extern "C" fn init() {
     storage::new_dictionary(STAKES_DICT).unwrap_or_default();
     storage::new_dictionary(LAST_CLAIM_TIME_DICT).unwrap_or_default();
     storage::new_dictionary(TOTAL_STAKED_DICT).unwrap_or_default();
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(U256::zero()).into());
 }
 
 // constructor
@@ -336,7 +344,7 @@ pub fn calculate_reward(
         max_apr
     );
 
-    let a_year: u64 = 31536000000;
+    let a_year: u64 = 31557600000;
 
     user_stake_amount.mul(dynamic_apr * elapsed_time).div(a_year)
 }
