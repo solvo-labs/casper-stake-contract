@@ -10,6 +10,15 @@ pub enum Error {
     StakeAmountError = 4,
     CannotTargetSelfUser = 5,
     InvalidKey = 6,
+
+    DepositPeriodEnded = 7,
+    ExceedsMaxCapacity = 8,
+    InsufficientBalance = 9,
+    DepositPeriodNotFinished = 10,
+    InvalidUnstakeAmount = 11,
+    RewardCalculationPeriodError = 12,
+    MaxCapacityError = 13,
+    LocktimeError = 14,
 }
 
 impl From<Error> for ApiError {

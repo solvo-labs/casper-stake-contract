@@ -2,4 +2,5 @@
 .idea
 
 server/secret.pem
+server/user.pem
 server/node_modules
