@@ -257,7 +257,10 @@ pub extern "C" fn call() {
     named_keys.insert(MAX_CAP.to_string(), storage::new_uref(max_cap).into());
     named_keys.insert(MIN_STAKE.to_string(), storage::new_uref(min_stake).into());
     named_keys.insert(MAX_STAKE.to_string(), storage::new_uref(max_stake).into());
-    named_keys.insert(LOCK_PERIOD.to_string(), storage::new_uref(lock_period).into());
+    named_keys.insert(
+        LOCK_PERIOD.to_string(),
+        storage::new_uref(lock_period + deposit_end_time).into()
+    );
     named_keys.insert(DEPOSIT_START_TIME.to_string(), storage::new_uref(deposit_start_time).into());
     named_keys.insert(DEPOSIT_END_TIME.to_string(), storage::new_uref(deposit_end_time).into());
 
@@ -354,9 +357,9 @@ pub fn calculate_reward(
         max_apr
     );
 
-    let a_year: u64 = 31557600000;
+    // let a_year: u64 = 31557600000;
 
-    user_stake_amount.mul(dynamic_apr * elapsed_time).div(a_year)
+    user_stake_amount.mul(dynamic_apr * elapsed_time).div(locked_period)
 }
 
 pub fn calculate_dynamic_apr(
