@@ -117,7 +117,7 @@ pub extern "C" fn unstake() {
     let lock_period: u64 = utils::read_from(LOCK_PERIOD);
     let now: u64 = runtime::get_blocktime().into();
 
-    if now.lt(&deposit_end_time) {
+    if now.gt(&deposit_end_time) {
         runtime::revert(Error::DepositPeriodEnded);
     }
 
