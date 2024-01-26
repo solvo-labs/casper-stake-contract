@@ -117,7 +117,7 @@ pub extern "C" fn unstake() {
     let lock_period: u64 = utils::read_from(LOCK_PERIOD);
     let now: u64 = runtime::get_blocktime().into();
 
-    if now.gt(&deposit_end_time) {
+    if now.le(&deposit_end_time) {
         runtime::revert(Error::DepositPeriodEnded);
     }
 
@@ -257,10 +257,7 @@ pub extern "C" fn call() {
     named_keys.insert(MAX_CAP.to_string(), storage::new_uref(max_cap).into());
     named_keys.insert(MIN_STAKE.to_string(), storage::new_uref(min_stake).into());
     named_keys.insert(MAX_STAKE.to_string(), storage::new_uref(max_stake).into());
-    named_keys.insert(
-        LOCK_PERIOD.to_string(),
-        storage::new_uref(lock_period + deposit_end_time).into()
-    );
+    named_keys.insert(LOCK_PERIOD.to_string(), storage::new_uref(lock_period).into());
     named_keys.insert(DEPOSIT_START_TIME.to_string(), storage::new_uref(deposit_start_time).into());
     named_keys.insert(DEPOSIT_END_TIME.to_string(), storage::new_uref(deposit_end_time).into());
 
