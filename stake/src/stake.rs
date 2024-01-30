@@ -356,7 +356,7 @@ pub fn calculate_reward(
 
     // let a_year: u64 = 31557600000;
 
-    user_stake_amount.mul(dynamic_apr * elapsed_time).div(locked_period)
+    user_stake_amount.mul(dynamic_apr).mul(elapsed_time).div(locked_period)
 }
 
 pub fn calculate_dynamic_apr(
