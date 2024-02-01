@@ -217,10 +217,14 @@ pub extern "C" fn claim_reward() {
         max_apr
     );
 
-    let token: Key = utils::read_from(TOKEN);
+    if reward > U256::zero() {
+        let token: Key = utils::read_from(TOKEN);
 
-    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
-    cep18.transfer(staker.into(), reward);
+        let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+
+        let reward_u64: u64 = reward.try_into().unwrap();
+        cep18.transfer(staker.into(), reward_u64);
+    }
 }
 
 #[no_mangle]
