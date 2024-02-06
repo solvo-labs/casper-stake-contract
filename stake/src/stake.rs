@@ -1,5 +1,4 @@
 use core::ops::{ Add, Div, Mul, Sub };
-
 use crate::enums::Address;
 use crate::interfaces::cep18::CEP18;
 use crate::{ error::Error, utils::{ self, get_current_address } };
@@ -53,7 +52,7 @@ pub extern "C" fn stake() {
     let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
     let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
 
-    if deposit_start_time.gt(&now) || now.gt(&deposit_end_time) {
+    if now.lt(&deposit_start_time) || now.gt(&deposit_end_time) {
         runtime::revert(Error::DepositPeriodEnded);
     }
 
@@ -62,7 +61,7 @@ pub extern "C" fn stake() {
     let max_stake: U256 = utils::read_from(MAX_STAKE);
     let max_cap: U256 = utils::read_from(MAX_CAP);
 
-    if min_stake.gt(&amount) || amount.gt(&max_stake) {
+    if amount.lt(&min_stake) || amount.gt(&max_stake) {
         runtime::revert(Error::StakeAmountError);
     }
 
@@ -144,7 +143,7 @@ pub extern "C" fn unstake() {
         runtime::revert(Error::LocktimeError);
     }
 
-    if amount.is_zero() && user_stake.lt(&amount) {
+    if amount.is_zero() || user_stake.lt(&amount) {
         runtime::revert(Error::InvalidUnstakeAmount);
     }
 
@@ -217,13 +216,12 @@ pub extern "C" fn claim_reward() {
         max_apr
     );
 
-    if reward > U256::zero() {
+    if !reward.is_zero() {
         let token: Key = utils::read_from(TOKEN);
 
         let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
 
-        let reward_u64: u64 = reward.try_into().unwrap();
-        cep18.transfer(staker.into(), reward_u64);
+        cep18.transfer(staker.into(), reward);
     }
 }
 
@@ -235,7 +233,6 @@ pub extern "C" fn init() {
     runtime::put_key(TOTAL_SUPPLY, storage::new_uref(U256::zero()).into());
 }
 
-// constructor
 #[no_mangle]
 pub extern "C" fn call() {
     let token: Key = runtime::get_named_arg(TOKEN);
@@ -344,11 +341,11 @@ pub fn calculate_reward(
     min_apr: u64,
     max_apr: u64
 ) -> U256 {
-    if now.lt(&deposit_end_time) {
-        runtime::revert(Error::RewardCalculationPeriodError);
+    if now < deposit_end_time {
+        return U256::zero();
     }
 
-    let elapsed_time = now.sub(user_last_claim_time);
+    let elapsed_time = now - user_last_claim_time;
     let dynamic_apr = calculate_dynamic_apr(
         now,
         deposit_start_time,
@@ -358,9 +355,11 @@ pub fn calculate_reward(
         max_apr
     );
 
-    // let a_year: u64 = 31557600000;
+    let elapsed_time_u256 = U256::from(elapsed_time);
+    let locked_period_u256 = U256::from(locked_period);
+    let dynamic_apr_u256 = U256::from(dynamic_apr);
 
-    user_stake_amount.mul(dynamic_apr).mul(elapsed_time).div(locked_period)
+    user_stake_amount.mul(dynamic_apr_u256).mul(elapsed_time_u256).div(locked_period_u256)
 }
 
 pub fn calculate_dynamic_apr(
@@ -371,18 +370,27 @@ pub fn calculate_dynamic_apr(
     min_apr: u64,
     max_apr: u64
 ) -> u64 {
-    if locked_period.eq(&0u64) {
+    if locked_period == 0 {
         return fixed_apr;
     }
 
-    let elapsed_time: u64 = now.sub(deposit_start_time);
-    let total_apr_increase: u64 = max_apr.sub(min_apr);
+    let elapsed_time = now - deposit_start_time;
+    let total_apr_increase = max_apr - min_apr;
 
-    if elapsed_time.ge(&locked_period) {
-        return min_apr.add(total_apr_increase);
+    if elapsed_time >= locked_period {
+        return min_apr + total_apr_increase;
     }
 
-    let apr_increase_per_second = total_apr_increase.div(locked_period);
+    let apr_increase_per_second = total_apr_increase / locked_period;
 
-    return apr_increase_per_second.mul(elapsed_time).add(min_apr);
+    // Zaman ve faiz işlemlerini güncelleyin
+    let elapsed_time_u256 = U256::from(elapsed_time);
+    let apr_increase_per_second_u256 = U256::from(apr_increase_per_second);
+
+    let apr_increase = apr_increase_per_second_u256.mul(elapsed_time_u256);
+
+    let min_apr_u256 = U256::from(min_apr);
+    let dynamic_apr_u256 = min_apr_u256.add(apr_increase);
+
+    dynamic_apr_u256.as_u64()
 }
