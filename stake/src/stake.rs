@@ -375,6 +375,8 @@ pub fn calculate_reward(
     );
 
     // user_stake_amount.mul(dynamic_apr_u256).mul(elapsed_time_u256).div(locked_period_u256);
+
+    U256::zero()
 }
 
 pub fn calculate_dynamic_apr(
