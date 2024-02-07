@@ -359,7 +359,22 @@ pub fn calculate_reward(
     let locked_period_u256 = U256::from(locked_period);
     let dynamic_apr_u256 = U256::from(dynamic_apr);
 
-    user_stake_amount.mul(dynamic_apr_u256).mul(elapsed_time_u256).div(locked_period_u256)
+    runtime::put_key("1", storage::new_uref(elapsed_time_u256).into());
+    runtime::put_key("2", storage::new_uref(locked_period_u256).into());
+    runtime::put_key("3", storage::new_uref(dynamic_apr_u256).into());
+    runtime::put_key(
+        "4",
+        storage
+            ::new_uref(
+                user_stake_amount
+                    .mul(dynamic_apr_u256)
+                    .mul(elapsed_time_u256)
+                    .div(locked_period_u256)
+            )
+            .into()
+    );
+
+    // user_stake_amount.mul(dynamic_apr_u256).mul(elapsed_time_u256).div(locked_period_u256);
 }
 
 pub fn calculate_dynamic_apr(
@@ -383,7 +398,6 @@ pub fn calculate_dynamic_apr(
 
     let apr_increase_per_second = total_apr_increase / locked_period;
 
-    // Zaman ve faiz işlemlerini güncelleyin
     let elapsed_time_u256 = U256::from(elapsed_time);
     let apr_increase_per_second_u256 = U256::from(apr_increase_per_second);
 
