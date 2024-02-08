@@ -1,25 +1,26 @@
 use crate::enums::Address;
-use crate::interfaces::cep18::{self, CEP18};
-use crate::{
-    error::Error,
-    utils::{self, get_current_address},
-};
-use alloc::{
-    string::{String, ToString},
-    vec,
-};
-use casper_contract::contract_api::{runtime, storage};
+use crate::interfaces::cep18::{ self, CEP18 };
+use crate::{ error::Error, utils::{ self, get_current_address } };
+use alloc::{ string::{ String, ToString }, vec };
+use casper_contract::contract_api::{ runtime, storage };
 use casper_types::{
     account::AccountHash,
     contracts::NamedKeys,
     runtime_args,
-    CLType::{self, URef},
-    ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
-    RuntimeArgs, U256,
+    CLType::{ self, URef },
+    ContractHash,
+    EntryPoint,
+    EntryPointAccess,
+    EntryPointType,
+    EntryPoints,
+    Key,
+    Parameter,
+    RuntimeArgs,
+    U256,
 };
 use core::char::MAX;
 use core::f32::MIN;
-use core::ops::{Add, Div, Mul, Sub};
+use core::ops::{ Add, Div, Mul, Sub };
 
 // Variables
 const TOKEN: &str = "token";
@@ -126,10 +127,7 @@ pub extern "C" fn stake() {
 
     storage::dictionary_put(stake_dict, &staker_item_key, total_staked_balance);
 
-    runtime::put_key(
-        TOTAL_SUPPLY,
-        storage::new_uref(total_supply.add(amount)).into(),
-    );
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.add(amount)).into());
     runtime::put_key(LIQUIDITY, storage::new_uref(liquidity.add(amount)).into());
 
     let fixed_apr: u64 = utils::read_from(FIXED_APR);
@@ -143,7 +141,40 @@ pub extern "C" fn stake() {
 }
 
 #[no_mangle]
-pub extern "C" fn unstake() {}
+pub extern "C" fn unstake() {
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+    let lock_period: u64 = utils::read_from(LOCK_PERIOD);
+    let expire_time = deposit_end_time.add(lock_period);
+    let now: u64 = runtime::get_blocktime().into();
+
+    if expire_time.gt(&now) {
+        runtime::revert(Error::StillLockPeriod);
+    }
+
+    let staker: AccountHash = runtime::get_caller();
+    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
+
+    let stake_balance: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
+        Ok(Some(stake)) => stake,
+        _ => U256::zero(),
+    };
+
+    if stake_balance.is_zero() {
+        runtime::revert(Error::InsufficientStakeBalance);
+    }
+
+    let contract_address: Address = get_current_address();
+    let liquidity: U256 = utils::read_from(LIQUIDITY);
+
+    let token: Key = utils::read_from(TOKEN);
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+
+    cep18.transfer(staker.into(), stake_balance);
+
+    storage::dictionary_put(stake_dict, &staker_item_key, U256::zero());
+    runtime::put_key(LIQUIDITY, storage::new_uref(liquidity.sub(stake_balance)).into());
+}
 
 #[no_mangle]
 pub extern "C" fn claim() {
@@ -189,10 +220,7 @@ pub extern "C" fn claim() {
     let total_reward: U256 = utils::read_from(TOTAL_REWARD);
 
     storage::dictionary_put(claimed_dict, &staker_item_key, reward);
-    runtime::put_key(
-        TOTAL_REWARD,
-        storage::new_uref(total_reward.sub(reward)).into(),
-    );
+    runtime::put_key(TOTAL_REWARD, storage::new_uref(total_reward.sub(reward)).into());
 }
 
 #[no_mangle]
@@ -272,18 +300,9 @@ pub extern "C" fn call() {
     named_keys.insert(MAX_CAP.to_string(), storage::new_uref(max_cap).into());
     named_keys.insert(MIN_STAKE.to_string(), storage::new_uref(min_stake).into());
     named_keys.insert(MAX_STAKE.to_string(), storage::new_uref(max_stake).into());
-    named_keys.insert(
-        LOCK_PERIOD.to_string(),
-        storage::new_uref(lock_period).into(),
-    );
-    named_keys.insert(
-        DEPOSIT_START_TIME.to_string(),
-        storage::new_uref(deposit_start_time).into(),
-    );
-    named_keys.insert(
-        DEPOSIT_END_TIME.to_string(),
-        storage::new_uref(deposit_end_time).into(),
-    );
+    named_keys.insert(LOCK_PERIOD.to_string(), storage::new_uref(lock_period).into());
+    named_keys.insert(DEPOSIT_START_TIME.to_string(), storage::new_uref(deposit_start_time).into());
+    named_keys.insert(DEPOSIT_END_TIME.to_string(), storage::new_uref(deposit_end_time).into());
     named_keys.insert(NOTIFIED.to_string(), storage::new_uref(false).into());
     named_keys.insert(OWNER.to_string(), storage::new_uref(owner).into());
 
@@ -292,7 +311,7 @@ pub extern "C" fn call() {
         vec![],
         URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::Contract
     );
 
     let stake_entry_point: EntryPoint = EntryPoint::new(
@@ -300,23 +319,23 @@ pub extern "C" fn call() {
         vec![Parameter::new(AMOUNT, CLType::U256)],
         URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::Contract
     );
 
-    // let unstake_entry_point: EntryPoint = EntryPoint::new(
-    //     ENTRY_POINT_UNSTAKE,
-    //     vec![Parameter::new(AMOUNT, CLType::U256)],
-    //     URef,
-    //     EntryPointAccess::Public,
-    //     EntryPointType::Contract
-    // );
+    let unstake_entry_point: EntryPoint = EntryPoint::new(
+        ENTRY_POINT_UNSTAKE,
+        vec![],
+        URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract
+    );
 
     let claim_entry_point: EntryPoint = EntryPoint::new(
         ENTRY_POINT_CLAIM,
         vec![],
         URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::Contract
     );
 
     let mut entry_points: EntryPoints = EntryPoints::new();
@@ -338,7 +357,7 @@ pub extern "C" fn call() {
         entry_points,
         Some(named_keys),
         Some(package_hash_text),
-        Some(uref_name_text),
+        Some(uref_name_text)
     );
 
     runtime::put_key(&contract_hash_text, contract_hash.into());
@@ -348,7 +367,7 @@ pub extern "C" fn call() {
         "insert",
         runtime_args! {
             "data" => contract_hash.to_string(),
-        },
+        }
     );
 }
 
