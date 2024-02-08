@@ -71,7 +71,7 @@ pub extern "C" fn notify() {
     let fixed_apr: u64 = utils::read_from(FIXED_ARP);
     let max_apr: u64 = utils::read_from(MAX_APR);
     let max_cap: U256 = utils::read_from(MAX_CAP);
-    let token: Key = utils::read_from(token);
+    let token: Key = utils::read_from(TOKEN);
 
     let mut prize = U256::zero();
 
@@ -90,7 +90,7 @@ pub extern "C" fn notify() {
     // check allowance
 
     let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
-    let balance: U256 = cep18.balance_of(owner);
+    let balance: U256 = cep18.balance_of(owner.into());
 
     if prize.gt(&balance) {
         runtime::revert(Error::UnsufficientBalance);
@@ -170,7 +170,7 @@ pub extern "C" fn call() {
 
     let mut entry_points: EntryPoints = EntryPoints::new();
 
-    entry_points.add_entry_point(init_entry_point);
+    entry_points.add_entry_point(notify_entry_point);
     // entry_points.add_entry_point(stake_entry_point);
     // entry_points.add_entry_point(unstake_entry_point);
     // entry_points.add_entry_point(claim_entry_point);
