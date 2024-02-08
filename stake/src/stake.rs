@@ -167,7 +167,7 @@ pub extern "C" fn notify() {
     let balance: U256 = cep18.balance_of(owner.into());
 
     if prize.gt(&balance) {
-        runtime::revert(Error::UnsufficientBalance);
+        runtime::revert(Error::InsufficientBalance);
     }
 
     cep18.transfer_from(owner.into(), contract_address.into(), prize);

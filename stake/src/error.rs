@@ -13,11 +13,11 @@ pub enum Error {
     AmountIsZero = 7,
     AmountLimits = 8,
     MaxCapacityError = 9,
+    InvalidKey = 10,
     // RewardRateError = 2,
     // RewardDurationError = 3,
     // StakeAmountError = 4,
     // CannotTargetSelfUser = 5,
-    // InvalidKey = 6,
 
     // DepositPeriodEnded = 7,
     // ExceedsMaxCapacity = 8,
