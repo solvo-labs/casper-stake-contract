@@ -14,6 +14,8 @@ pub enum Error {
     AmountLimits = 8,
     MaxCapacityError = 9,
     InvalidKey = 10,
+    StillLockPeriod = 11,
+    StakeAmountIsZero = 12,
     // RewardRateError = 2,
     // RewardDurationError = 3,
     // StakeAmountError = 4,
