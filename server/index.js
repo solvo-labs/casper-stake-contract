@@ -243,7 +243,7 @@ const claim_reward = async () => {
 
   const args = RuntimeArgs.fromMap({});
 
-  const deploy = contract.callEntrypoint("claim", args, user.publicKey, "casper-test", "1000000000", [user]);
+  const deploy = contract.callEntrypoint("claim", args, user.publicKey, "casper-test", "2000000000", [user]);
 
   try {
     const tx = await client.putDeploy(deploy);
