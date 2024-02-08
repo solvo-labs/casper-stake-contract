@@ -45,8 +45,8 @@ class CasperHelpers {
 }
 
 const token = "effbcbdc5bf6f974a13e72ff45461337a41c58298cdaa3cd5b890a4561f11d96";
-const contractHash = "hash-08a27a38071ca7edb703b1adf4576585779b364126b829ecd3d1b259ca770d0b";
-const contractPackageHash = "2446c5ab4355f8b7a6ef563b20349a1f5acc5948ef47cbd3e56039bd77dfcb04";
+const contractHash = "hash-0375b6fd14266aaf71a3821688647860e89d30cee3ad65c58a35c293bbe7a6b3";
+const contractPackageHash = "5d7a80b7309644f665232260f083eac1e4d80c12198871855af78be24dabd9be";
 
 async function install() {
   const args = RuntimeArgs.fromMap({
@@ -207,7 +207,7 @@ const stake = async () => {
     amount: CLValueBuilder.u256(10 * Math.pow(10, 8)),
   });
 
-  const deploy = contract.callEntrypoint("stake", args, user.publicKey, "casper-test", "2000000000", [user]);
+  const deploy = contract.callEntrypoint("stake", args, user.publicKey, "casper-test", "3000000000", [user]);
 
   try {
     const tx = await client.putDeploy(deploy);
@@ -243,7 +243,7 @@ const claim_reward = async () => {
 
   const args = RuntimeArgs.fromMap({});
 
-  const deploy = contract.callEntrypoint("claim_reward", args, user.publicKey, "casper-test", "1000000000", [user]);
+  const deploy = contract.callEntrypoint("claim", args, user.publicKey, "casper-test", "1000000000", [user]);
 
   try {
     const tx = await client.putDeploy(deploy);
@@ -257,15 +257,10 @@ const claim_reward = async () => {
 
 // install();
 
-// notify_reward_amount();
 // increase_allowance();
 
 // notify();
 
-stake();
 // increase_allowance_stake();
-// claim_reward();
-
-// unstake();
-
-// transfer();
+// stake();
+claim_reward();
