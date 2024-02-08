@@ -199,12 +199,10 @@ pub extern "C" fn call() {
         "data" => contract_hash.to_string(),
     }
     );
-
-    runtime::call_contract::<()>(contract_hash, ENTRY_POINT_INIT, runtime_args! {});
 }
 
 pub fn only_owner() {
-    let admin: AccountHash = get_key(OWNER);
+    let admin: AccountHash = utils::get_key(OWNER);
     let caller: AccountHash = runtime::get_caller();
     if admin != caller {
         runtime::revert(Error::AdminError)
