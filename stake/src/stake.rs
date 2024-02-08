@@ -50,7 +50,81 @@ const ENTRY_POINT_UNSTAKE: &str = "unstake";
 const ENTRY_POINT_CLAIM: &str = "claim";
 
 #[no_mangle]
-pub extern "C" fn stake() {}
+pub extern "C" fn stake() {
+    let notified: bool = utils::read_from(NOTIFIED);
+
+    if !notified {
+        runtime::revert(Error::WaitingNotify);
+    }
+
+    let amount: U256 = runtime::get_named_arg(AMOUNT);
+
+    if amount.is_zero() {
+        runtime::revert(Error::AmountIsZero);
+    }
+
+    // time limits
+    let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+    let now: u64 = runtime::get_blocktime().into();
+
+    if deposit_start_time > now {
+        runtime::revert(Error::StakeIsNotStarted);
+    }
+
+    if deposit_end_time < now {
+        runtime::revert(Error::StakeIsCompleted);
+    }
+
+    // amount limits
+    let min_stake: U256 = utils::read_from(MIN_STAKE);
+
+    if amount.lt(&min_stake) {
+        runtime::revert(Error::AmountLimits);
+    }
+
+    let staker: AccountHash = runtime::get_caller();
+
+    let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
+    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+
+    let stake_balance: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
+        Ok(Some(stake)) => stake,
+        _ => U256::zero(),
+    };
+
+    let total_staked_balance = stake_balance.add(amount);
+
+    let max_stake: U256 = utils::read_from(MAX_STAKE);
+    let max_cap: U256 = utils::read_from(MAX_CAP);
+
+    if total_staked_balance.gt(&max_stake) {
+        runtime::revert(Error::AmountLimits);
+    }
+
+    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
+    let added_total_supply: U256 = total_supply.add(amount);
+
+    if added_total_supply.gt(&max_cap) {
+        runtime::revert(Error::MaxCapacityError);
+    }
+
+    let token: Key = utils::read_from(TOKEN);
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+    let staker_balance: U256 = cep18.balance_of(staker.into());
+
+    if staker_balance.lt(&amount) {
+        runtime::revert(Error::InsufficientBalance);
+    }
+
+    let contract_address: Address = get_current_address();
+
+    cep18.transfer_from(staker.into(), contract_address.into(), amount);
+
+    storage::dictionary_put(stake_dict, &staker_item_key, total_staked_balance);
+
+    runtime::put_key(TOTAL_SUPPLY, storage::new_uref(total_supply.add(amount)).into());
+}
 
 #[no_mangle]
 pub extern "C" fn unstake() {}
@@ -145,13 +219,13 @@ pub extern "C" fn call() {
         EntryPointType::Contract
     );
 
-    // let stake_entry_point: EntryPoint = EntryPoint::new(
-    //     ENTRY_POINT_STAKE,
-    //     vec![Parameter::new(AMOUNT, CLType::U256)],
-    //     URef,
-    //     EntryPointAccess::Public,
-    //     EntryPointType::Contract
-    // );
+    let stake_entry_point: EntryPoint = EntryPoint::new(
+        ENTRY_POINT_STAKE,
+        vec![Parameter::new(AMOUNT, CLType::U256)],
+        URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract
+    );
 
     // let unstake_entry_point: EntryPoint = EntryPoint::new(
     //     ENTRY_POINT_UNSTAKE,
@@ -172,7 +246,7 @@ pub extern "C" fn call() {
     let mut entry_points: EntryPoints = EntryPoints::new();
 
     entry_points.add_entry_point(notify_entry_point);
-    // entry_points.add_entry_point(stake_entry_point);
+    entry_points.add_entry_point(stake_entry_point);
     // entry_points.add_entry_point(unstake_entry_point);
     // entry_points.add_entry_point(claim_entry_point);
 
