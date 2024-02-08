@@ -9,5 +9,5 @@ make prepare
 ## Building Contract
 
 ```
-make test
+make build-contract
 ```
