@@ -21,9 +21,9 @@ const stakeWasm = new Uint8Array(fs.readFileSync("stake.wasm"));
 // const stakeWasm = new Uint8Array(fs.readFileSync(CONTRACT_WASM_PATH));
 
 const keys = Keys.Secp256K1.loadKeyPairFromPrivateFile("secret.pem");
-console.log(keys.publicKey.toHex());
-// const user = Keys.Secp256K1.loadKeyPairFromPrivateFile("user.pem");
 
+const user = Keys.Secp256K1.loadKeyPairFromPrivateFile("user.pem");
+console.log(user.publicKey.toHex());
 const contract = new Contracts.Contract(client);
 
 class CasperHelpers {
@@ -45,8 +45,8 @@ class CasperHelpers {
 }
 
 const token = "effbcbdc5bf6f974a13e72ff45461337a41c58298cdaa3cd5b890a4561f11d96";
-const contractHash = "hash-951f97edb655650d2d5d262eaee9da5cfc99a8c521948ef4014d0dd52243fd75";
-const contractPackageHash = "635420b33c2636750e2523afce8ddc468b74fb4bc953853a500408e06485a8bd";
+const contractHash = "hash-08a27a38071ca7edb703b1adf4576585779b364126b829ecd3d1b259ca770d0b";
+const contractPackageHash = "2446c5ab4355f8b7a6ef563b20349a1f5acc5948ef47cbd3e56039bd77dfcb04";
 
 async function install() {
   const args = RuntimeArgs.fromMap({
@@ -62,7 +62,7 @@ async function install() {
 
     lock_period: CLValueBuilder.u64(5000),
     deposit_start_time: CLValueBuilder.u64(Date.now()),
-    deposit_end_time: CLValueBuilder.u64(Date.now() + 300000),
+    deposit_end_time: CLValueBuilder.u64(Date.now() + 600000),
     storage_key: new CLAccountHash(Buffer.from("46e7c209fcbce9c5447d162c212b5f63d68f23ba90cba432d50c204a8634f758", "hex")),
   });
 
@@ -178,6 +178,27 @@ const transfer = async () => {
   }
 };
 
+const increase_allowance_stake = async () => {
+  contract.setContractHash("hash-" + token);
+
+  const args = RuntimeArgs.fromMap({
+    // Spender: Contract Package Hash
+    spender: CasperHelpers.stringToKey(contractPackageHash),
+    amount: CLValueBuilder.u256(10 * Math.pow(10, 8)),
+  });
+
+  const deploy = contract.callEntrypoint("increase_allowance", args, user.publicKey, "casper-test", "10000000000", [user]);
+
+  try {
+    const tx = await client.putDeploy(deploy);
+
+    console.log("https://testnet.cspr.live/deploy/" + tx);
+  } catch (error) {
+    console.log("error", error);
+    return error;
+  }
+};
+
 // user.pem
 const stake = async () => {
   contract.setContractHash(contractHash);
@@ -239,9 +260,10 @@ const claim_reward = async () => {
 // notify_reward_amount();
 // increase_allowance();
 
-notify();
+// notify();
 
-// stake();
+stake();
+// increase_allowance_stake();
 // claim_reward();
 
 // unstake();
