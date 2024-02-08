@@ -102,6 +102,7 @@ pub extern "C" fn notify() {
     storage::new_dictionary(CLAIMED_DICT).unwrap_or_default();
     runtime::put_key(TOTAL_SUPPLY, storage::new_uref(U256::zero()).into());
     runtime::put_key(TOTAL_REWARD, storage::new_uref(prize).into());
+    runtime::put_key(NOTIFIED, storage::new_uref(true).into());
 }
 
 #[no_mangle]
