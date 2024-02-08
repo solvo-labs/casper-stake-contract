@@ -19,6 +19,8 @@ pub enum Error {
     RewardCalculationPeriodError = 12,
     MaxCapacityError = 13,
     LocktimeError = 14,
+    AlreadyNotified = 15,
+    UnsufficientBalance = 16,
 }
 
 impl From<Error> for ApiError {
