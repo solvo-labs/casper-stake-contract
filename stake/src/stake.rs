@@ -43,6 +43,7 @@ const APR: &str = "apr";
 // Dictionaries
 const STAKES_DICT: &str = "stakes_dict";
 const CLAIMED_DICT: &str = "claimed_dict";
+const STAKES_BALANCE_DICT: &str = "stakes_balance_dict";
 
 // Entry points
 const ENTRY_POINT_NOTIFY: &str = "notify";
@@ -88,6 +89,7 @@ pub extern "C" fn stake() {
 
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
     let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+    let stakes_balance_dict = *runtime::get_key(STAKES_BALANCE_DICT).unwrap().as_uref().unwrap();
 
     let stake_balance: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
         Ok(Some(stake)) => stake,
@@ -123,6 +125,7 @@ pub extern "C" fn stake() {
     cep18.transfer_from(staker.into(), contract_address.into(), amount);
 
     storage::dictionary_put(stake_dict, &staker_item_key, total_staked_balance);
+    storage::dictionary_put(stakes_balance_dict, &staker_item_key, total_staked_balance);
 
     runtime::put_key(TOTAL_SUPPLY, storage::new_uref(added_total_supply).into());
 
