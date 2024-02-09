@@ -197,7 +197,7 @@ pub extern "C" fn claim() {
 
     let staker: AccountHash = runtime::get_caller();
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
-    let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
+    let stake_dict = *runtime::get_key(STAKES_BALANCE_DICT).unwrap().as_uref().unwrap();
 
     let stake: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
         Ok(Some(stake)) => stake,
