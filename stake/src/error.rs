@@ -17,6 +17,7 @@ pub enum Error {
     StillLockPeriod = 11,
     StakeAmountIsZero = 12,
     InsufficientStakeBalance = 13,
+    RefundTimeError = 14,
     // RewardRateError = 2,
     // RewardDurationError = 3,
     // StakeAmountError = 4,
