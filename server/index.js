@@ -43,9 +43,9 @@ class CasperHelpers {
 }
 
 //token contract hash
-const token = "d8aace3b963987c73474bbed69fe3410a87d2c7cb02d05d10bc2af23ca430aa5";
-const contractHash = "hash-54d2e5e45162c5de3e2b63193156c88ef550c5bb422fe2b23b700db221f73a39";
-const contractPackageHash = "11ed701734018024e6c6924ff0af21b781d62437ab267d3f234b99eb79c150d7";
+const token = "1270fd8b9a96a1509337f4f9909603da820e7e637b30adc77e52c51f84207acf";
+const contractHash = "hash-783146e098614a54f14c6fbda9f7273dae43bbbcae775a4958463a46af1c3843";
+const contractPackageHash = "a72010c60efcaf2fa9491e15c69cf2eb3c51afae5ea736d8ace1f18c596e5a43";
 
 async function install() {
   const args = RuntimeArgs.fromMap({
@@ -76,46 +76,6 @@ async function install() {
     return error;
   }
 }
-
-// const set_rewards_duration = async () => {
-//   contract.setContractHash(contractHash);
-
-//   const args = RuntimeArgs.fromMap({
-//     duration: CLValueBuilder.u64(604800),
-//   });
-
-//   const deploy = contract.callEntrypoint("set_rewards_duration", args, keys.publicKey, "casper-test", "1000000000", [keys]);
-
-//   try {
-//     const tx = await client.putDeploy(deploy);
-
-//     console.log("https://testnet.cspr.live/deploy/" + tx);
-//   } catch (error) {
-//     console.log("error", error);
-//     return error;
-//   }
-// };
-
-// const approve = async () => {
-//     contract.setContractHash("hash-" + token);
-//
-//     const args = RuntimeArgs.fromMap({
-//         // duration: CLValueBuilder.u64(604800),
-//         spender: CasperHelpers.stringToKey("14407677ef0f1a65f14a3782605961dfe08e3cff2848b050fdaa1575bedee255"),
-//         amount: CLValueBuilder.u256(100 * Math.pow(10, 8)),
-//     });
-//
-//     const deploy = contract.callEntrypoint("approve", args, keys.publicKey, "casper-test", "10000000000", [keys]);
-//
-//     try {
-//         const tx = await client.putDeploy(deploy);
-//
-//         console.log("https://testnet.cspr.live/deploy/" + tx);
-//     } catch (error) {
-//         console.log("error", error);
-//         return error;
-//     }
-// };
 
 // user.pem
 const increase_allowance = async () => {
@@ -252,6 +212,23 @@ const claim_reward = async () => {
   }
 };
 
+const refund_reward = async () => {
+  contract.setContractHash(contractHash);
+
+  const args = RuntimeArgs.fromMap({});
+
+  const deploy = contract.callEntrypoint("refund_reward", args, keys.publicKey, "casper-test", "2000000000", [keys]);
+
+  try {
+    const tx = await client.putDeploy(deploy);
+
+    console.log("https://testnet.cspr.live/deploy/" + tx);
+  } catch (error) {
+    console.log("error", error);
+    return error;
+  }
+};
+
 // install();
 
 // increase_allowance();
@@ -265,3 +242,5 @@ const claim_reward = async () => {
 // claim_reward();
 
 // unstake();
+
+refund_reward();
