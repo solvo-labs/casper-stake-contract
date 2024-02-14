@@ -249,8 +249,8 @@ pub extern "C" fn refund_reward() {
     }
 
     let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
-    let apr: u64 = utils::read_from(APR);
     let total_reward: U256 = utils::read_from(TOTAL_REWARD);
+    let apr: u64 = utils::read_from(APR);
 
     let reward = total_supply.mul(U256::from(apr)).div(U256::from(100));
     let remain_reward = total_reward.sub(reward);
@@ -260,11 +260,6 @@ pub extern "C" fn refund_reward() {
 
     let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
     cep18.transfer(owner.into(), remain_reward);
-
-    runtime::put_key(
-        TOTAL_REWARD,
-        storage::new_uref(total_reward.sub(remain_reward)).into(),
-    )
 }
 
 #[no_mangle]
