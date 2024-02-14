@@ -226,13 +226,8 @@ pub extern "C" fn claim() {
 
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
     let claimed_dict = *runtime::get_key(CLAIMED_DICT).unwrap().as_uref().unwrap();
-    let total_reward: U256 = utils::read_from(TOTAL_REWARD);
 
     storage::dictionary_put(claimed_dict, &staker_item_key, reward);
-    runtime::put_key(
-        TOTAL_REWARD,
-        storage::new_uref(total_reward.sub(reward)).into(),
-    );
 }
 
 #[no_mangle]
