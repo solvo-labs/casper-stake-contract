@@ -49,6 +49,7 @@ const ENTRY_POINT_NOTIFY: &str = "notify";
 const ENTRY_POINT_STAKE: &str = "stake";
 const ENTRY_POINT_UNSTAKE: &str = "unstake";
 const ENTRY_POINT_CLAIM: &str = "claim";
+const ENTRY_POINT_REFUND_REWARD: &str = "refund_reward";
 
 #[no_mangle]
 pub extern "C" fn stake() {
@@ -225,13 +226,35 @@ pub extern "C" fn claim() {
 
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
     let claimed_dict = *runtime::get_key(CLAIMED_DICT).unwrap().as_uref().unwrap();
-    let total_reward: U256 = utils::read_from(TOTAL_REWARD);
 
     storage::dictionary_put(claimed_dict, &staker_item_key, reward);
-    runtime::put_key(
-        TOTAL_REWARD,
-        storage::new_uref(total_reward.sub(reward)).into(),
-    );
+}
+
+#[no_mangle]
+pub extern "C" fn refund_reward() {
+    only_owner();
+
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+    let lock_period: u64 = utils::read_from(LOCK_PERIOD);
+
+    let now: u64 = runtime::get_blocktime().into();
+
+    if now < deposit_end_time + lock_period {
+        runtime::revert(Error::RefundTimeError);
+    }
+
+    let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
+    let total_reward: U256 = utils::read_from(TOTAL_REWARD);
+    let apr: u64 = utils::read_from(APR);
+
+    let reward = total_supply.mul(U256::from(apr)).div(U256::from(100));
+    let remain_reward = total_reward.sub(reward);
+
+    let token: Key = utils::read_from(TOKEN);
+    let owner: AccountHash = runtime::get_caller();
+
+    let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
+    cep18.transfer(owner.into(), remain_reward);
 }
 
 #[no_mangle]
@@ -359,12 +382,21 @@ pub extern "C" fn call() {
         EntryPointType::Contract,
     );
 
+    let refund_reward_entry_point: EntryPoint = EntryPoint::new(
+        ENTRY_POINT_REFUND_REWARD,
+        vec![],
+        URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+
     let mut entry_points: EntryPoints = EntryPoints::new();
 
     entry_points.add_entry_point(notify_entry_point);
     entry_points.add_entry_point(stake_entry_point);
     entry_points.add_entry_point(unstake_entry_point);
     entry_points.add_entry_point(claim_entry_point);
+    entry_points.add_entry_point(refund_reward_entry_point);
 
     let ph_text: String = String::from("stake_package_hash_");
     let ch_text: String = String::from("stake_contract_hash_");
