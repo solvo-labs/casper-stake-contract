@@ -199,8 +199,6 @@ pub extern "C" fn claim() {
         runtime::revert(Error::StillLockPeriod);
     }
 
-    let apr: u64 = utils::read_from(APR);
-
     let staker: AccountHash = runtime::get_caller();
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
     let stake_dict = *runtime::get_key(STAKES_BALANCE_DICT)
@@ -217,6 +215,7 @@ pub extern "C" fn claim() {
         runtime::revert(Error::StakeAmountIsZero);
     }
 
+    let apr: u64 = utils::read_from(APR);
     let reward = stake.mul(U256::from(apr)).div(U256::from(100));
 
     let token: Key = utils::read_from(TOKEN);
