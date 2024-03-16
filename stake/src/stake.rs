@@ -59,26 +59,27 @@ pub extern "C" fn stake() {
         runtime::revert(Error::WaitingNotify);
     }
 
-    let amount: U256 = runtime::get_named_arg(AMOUNT);
-
-    if amount.is_zero() {
-        runtime::revert(Error::AmountIsZero);
-    }
-
     // time limits
     let deposit_start_time: u64 = utils::read_from(DEPOSIT_START_TIME);
-    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
     let now: u64 = runtime::get_blocktime().into();
 
     if deposit_start_time > now {
         runtime::revert(Error::StakeIsNotStarted);
     }
 
+    let deposit_end_time: u64 = utils::read_from(DEPOSIT_END_TIME);
+
     if deposit_end_time < now {
         runtime::revert(Error::StakeIsCompleted);
     }
 
     // amount limits
+    let amount: U256 = runtime::get_named_arg(AMOUNT);
+
+    if amount.is_zero() {
+        runtime::revert(Error::AmountIsZero);
+    }
+
     let min_stake: U256 = utils::read_from(MIN_STAKE);
 
     if amount.lt(&min_stake) {
@@ -89,20 +90,13 @@ pub extern "C" fn stake() {
 
     let staker_item_key: String = utils::encode_dictionary_item_key(staker.into());
     let stake_dict = *runtime::get_key(STAKES_DICT).unwrap().as_uref().unwrap();
-    let stakes_balance_dict = *runtime::get_key(STAKES_BALANCE_DICT)
-        .unwrap()
-        .as_uref()
-        .unwrap();
-
     let stake_balance: U256 = match storage::dictionary_get::<U256>(stake_dict, &staker_item_key) {
         Ok(Some(stake)) => stake,
         _ => U256::zero(),
     };
 
     let total_staked_balance = stake_balance.add(amount);
-
     let max_stake: U256 = utils::read_from(MAX_STAKE);
-    let max_cap: U256 = utils::read_from(MAX_CAP);
 
     if total_staked_balance.gt(&max_stake) {
         runtime::revert(Error::AmountLimits);
@@ -110,6 +104,7 @@ pub extern "C" fn stake() {
 
     let total_supply: U256 = utils::read_from(TOTAL_SUPPLY);
     let added_total_supply: U256 = total_supply.add(amount);
+    let max_cap: U256 = utils::read_from(MAX_CAP);
 
     if added_total_supply.gt(&max_cap) {
         runtime::revert(Error::MaxCapacityError);
@@ -126,6 +121,11 @@ pub extern "C" fn stake() {
     let contract_address: Address = get_current_address();
 
     cep18.transfer_from(staker.into(), contract_address.into(), amount);
+
+    let stakes_balance_dict = *runtime::get_key(STAKES_BALANCE_DICT)
+        .unwrap()
+        .as_uref()
+        .unwrap();
 
     storage::dictionary_put(stake_dict, &staker_item_key, total_staked_balance);
     storage::dictionary_put(stakes_balance_dict, &staker_item_key, total_staked_balance);
