@@ -269,7 +269,6 @@ pub extern "C" fn notify() {
     let fixed_apr: u64 = utils::read_from(FIXED_APR);
     let max_apr: u64 = utils::read_from(MAX_APR);
     let max_cap: U256 = utils::read_from(MAX_CAP);
-    let token: Key = utils::read_from(TOKEN);
 
     let prize;
 
@@ -285,17 +284,17 @@ pub extern "C" fn notify() {
         runtime::put_key(APR, storage::new_uref(max_apr).into());
     }
 
-    let owner: AccountHash = runtime::get_caller();
-    let contract_address: Address = get_current_address();
-
     // check allowance
-
+    let owner: AccountHash = runtime::get_caller();
+    let token: Key = utils::read_from(TOKEN);
     let cep18: CEP18 = CEP18::new(token.into_hash().map(ContractHash::new).unwrap());
     let balance: U256 = cep18.balance_of(owner.into());
 
     if prize.gt(&balance) {
         runtime::revert(Error::InsufficientBalance);
     }
+
+    let contract_address: Address = get_current_address();
 
     cep18.transfer_from(owner.into(), contract_address.into(), prize);
 
